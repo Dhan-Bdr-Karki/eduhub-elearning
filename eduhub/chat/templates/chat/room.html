@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Chat room for "{{ course.title }}"{% endblock %}
+
+{% block content %}
+<div id="chat">
+    {% if messages %}
+    {% for msg in messages %}
+    <div class="message {% if request.user == msg.user %}me{% else %}other{% endif %}">
+        {% if request.user == msg.user %}
+        <strong> Me </strong>
+        {% else %}
+        <strong> {{ msg.user.username }} </strong>
+        {% endif %}
+        <span class="date"> {{ msg.date_added }} </span><br>
+        {{ msg.message }}
+    </div>
+    {% endfor %}
+    {% endif %}
+</div>
+<div id="chat-input">
+    <input id="chat-message-input" type="text">
+    <input id="chat-message-submit" type="submit" value="Send">
+</div>
+{% endblock %}
+
+
+{% block include_js %}
+    {{ course.id|json_script:"course-id" }}
+    {{ request.user.username|json_script:"request-user" }}
+{% endblock %}
+
+
+
+{% block domready %}
+    const chat = document.getElementById('chat');
+    chat.scrollTop = chat.scrollHeight;
+
+    var mdate = document.querySelectorAll('.date')
+    mdate.forEach(function(item){
+        item.innerHTML = item.innerHTML.substr(-11).toUpperCase().split('.').join('');
+    })
+
+    const courseId = JSON.parse(
+    document.getElementById('course-id').textContent
+    );
+
+    const requestUser = JSON.parse(
+        document.getElementById('request-user').textContent
+    );
+
+
+    const url = 'ws://' + window.location.host +
+    '/ws/chat/room/' + courseId + '/';
+
+    const chatSocket = new WebSocket(url);
+
+    chatSocket.onmessage = function(event) {
+        const data = JSON.parse(event.data);
+        const dateOptions = {hour: 'numeric', minute: 'numeric', hour12: true};
+        const datetime = new Date(data.datetime).toLocaleString('en', dateOptions);
+        const isMe = data.username === requestUser;
+        const source = isMe ? 'me' : 'other';
+        const name = isMe ? 'Me' : data.username;
+
+        chat.innerHTML += '<div class="message ' + source + '">' +
+            '<strong>' + name + '</strong> ' +
+            '<span class="date">' + datetime + '</span><br>' +
+            data.message + '</div>';
+            
+        chat.scrollTop = chat.scrollHeight;
+    };
+
+    chatSocket.onclose = function(event) {
+        console.error('Chat socket closed unexpectedly');
+    };
+
+    const input = document.getElementById('chat-message-input');
+    const submitButton = document.getElementById('chat-message-submit');
+
+    submitButton.addEventListener('click', function(event) {
+        const message = input.value;
+        if(message) {
+            // send message in JSON format
+            chatSocket.send(JSON.stringify({
+                    'message': message,
+                    'username':requestUser,
+                    'course_id':courseId,
+                    
+            }));
+            // clear input
+            input.value = '';
+            input.focus();
+        }
+    });
+
+    input.addEventListener('keypress', function(event) {
+        if (event.key === 'Enter') {
+            // cancel the default action, if needed
+            event.preventDefault();
+            // trigger click event on button
+            submitButton.click();
+        }
+    });
+
+    input.focus();
+{% endblock %}
